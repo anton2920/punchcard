@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"log"
 	"os"
+	"os/signal"
 	"strings"
+
+	"golang.org/x/term"
 )
 
 const PunchcardHeader = `┌─────┬─┬──────────────────────────────────────────────────────────────────┬────────┐`
@@ -131,7 +133,8 @@ func DisplayFirstLine(line string) {
 		i++
 	}
 
-	fmt.Println(sb.String())
+	sb.WriteString("\r\n")
+	fmt.Print(sb.String())
 }
 
 func DisplayPunchedLine(line string, cardLine string, search int) {
@@ -152,7 +155,8 @@ func DisplayPunchedLine(line string, cardLine string, search int) {
 		i++
 	}
 
-	fmt.Println(sb.String())
+	sb.WriteString("\r\n")
+	fmt.Print(sb.String())
 }
 
 func DisplayTwelvethLine(line string) {
@@ -181,40 +185,120 @@ func DisplayDigitalLines(line string) {
 }
 
 func DisplayLine(line string) {
-	fmt.Println(PunchcardHeader)
+	fmt.Print(PunchcardHeader + "\r\n")
 	DisplayFirstLine(line)
 	DisplayTwelvethLine(line)
-	fmt.Println(PunchcardHR1)
+	fmt.Print(PunchcardHR1 + "\r\n")
 	DisplayEleventhLine(line)
-	fmt.Println(PunchcardHR2)
+	fmt.Print(PunchcardHR2 + "\r\n")
 	DisplayDigitalLines(line)
-	fmt.Println(PunchcardFooter)
+	fmt.Print(PunchcardFooter + "\r\n")
+}
+
+func Usage() {
+	fmt.Fprintln(os.Stderr, "usage: punchcard [-p] [file]")
+	os.Exit(1)
+}
+
+func PrintFile(args []string) error {
+	var file *os.File
+
+	switch len(args) {
+	case 0:
+		file = os.Stdin
+	case 1:
+		var err error
+
+		file, err = os.Open(args[0])
+		if err != nil {
+			return fmt.Errorf("failed to open source file: %v", err)
+		}
+	default:
+		Usage()
+	}
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		DisplayLine(scanner.Text())
+	}
+
+	return nil
+}
+
+func EditFile(args []string) error {
+	if len(args) != 1 {
+		Usage()
+	}
+	file, err := os.OpenFile(args[0], os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open file: %v", err)
+	}
+
+	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	if err != nil {
+		return fmt.Errorf("failed to switch terminal to RAW mode: %v", err)
+	}
+	defer term.Restore(int(os.Stdin.Fd()), oldState)
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+
+	go func() {
+		<-c
+		term.Restore(int(os.Stdin.Fd()), oldState)
+		os.Exit(0)
+	}()
+
+	line := make([]byte, 80)
+	pos := 0
+
+	_ = file
+
+forLoop:
+	for {
+		DisplayLine(string(line[:pos]))
+
+		buffer := make([]byte, 10)
+		n, err := os.Stdin.Read(buffer)
+		if err != nil {
+			return fmt.Errorf("failed to read from stdin: %v", err)
+		}
+		buffer = buffer[:n]
+
+		fmt.Printf("%v", buffer)
+
+		if len(buffer) == 1 {
+			switch buffer[0] {
+			case 'q':
+				break forLoop
+			case 127:
+				line = line[:0]
+				pos = 0
+			default:
+				if len(buffer) <= len(line)-pos {
+					pos += copy(line[pos:], buffer)
+				}
+			}
+		}
+
+	}
+
+	return nil
 }
 
 func main() {
-	var file *os.File
+	var err error
 
 	printFlag := flag.Bool("p", false, "print file instead of editing")
 	flag.Parse()
 
 	if *printFlag {
-		switch len(flag.Args()) {
-		case 0:
-			file = os.Stdin
-		case 1:
-			var err error
-
-			file, err = os.Open(flag.Args()[0])
-			if err != nil {
-				log.Fatalf("Failed to open source file: %v", err)
-			}
-		default:
-			fmt.Fprintln(os.Stderr, "usage: punchcard [file]")
-		}
-
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			DisplayLine(scanner.Text())
-		}
+		err = PrintFile(flag.Args())
+	} else {
+		err = EditFile(flag.Args())
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", os.Args[0], err)
+		os.Exit(1)
 	}
 }
