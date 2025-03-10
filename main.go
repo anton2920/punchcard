@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -193,22 +194,27 @@ func DisplayLine(line string) {
 func main() {
 	var file *os.File
 
-	switch len(os.Args) {
-	case 1:
-		file = os.Stdin
-	case 2:
-		var err error
+	printFlag := flag.Bool("p", false, "print file instead of editing")
+	flag.Parse()
 
-		file, err = os.Open(os.Args[1])
-		if err != nil {
-			log.Fatalf("Failed to open source file: %v", err)
+	if *printFlag {
+		switch len(flag.Args()) {
+		case 0:
+			file = os.Stdin
+		case 1:
+			var err error
+
+			file, err = os.Open(flag.Args()[0])
+			if err != nil {
+				log.Fatalf("Failed to open source file: %v", err)
+			}
+		default:
+			fmt.Fprintln(os.Stderr, "usage: punchcard [file]")
 		}
-	default:
-		fmt.Fprintln(os.Stderr, "usage: punchcard [file]")
-	}
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		DisplayLine(scanner.Text())
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			DisplayLine(scanner.Text())
+		}
 	}
 }
