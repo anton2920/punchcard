@@ -25,16 +25,18 @@ const PunchcardEleventhLine = `│     │ │                  F O R T R A N  S
 
 const PunchcardHR2 = `├─────┼─┼──────────────────────────────────────────────────────────────────┼────────┤`
 
-const PunchcardDigitalLines = `│00000│0│000000000000000000000000000000000000000000000000000000000000000000│00000000│
-│11111│1│111111111111111111111111111111111111111111111111111111111111111111│11111111│
-│22222│2│222222222222222222222222222222222222222222222222222222222222222222│22222222│
-│33333│3│333333333333333333333333333333333333333333333333333333333333333333│33333333│
-│44444│4│444444444444444444444444444444444444444444444444444444444444444444│44444444│
-│55555│5│555555555555555555555555555555555555555555555555555555555555555555│55555555│
-│66666│6│666666666666666666666666666666666666666666666666666666666666666666│66666666│
-│77777│7│777777777777777777777777777777777777777777777777777777777777777777│77777777│
-│88888│8│888888888888888888888888888888888888888888888888888888888888888888│88888888│
-│99999│9│999999999999999999999999999999999999999999999999999999999999999999│99999999│`
+var PunchcardDigitalLines = []string{
+	`│00000│0│000000000000000000000000000000000000000000000000000000000000000000│00000000│`,
+	`│11111│1│111111111111111111111111111111111111111111111111111111111111111111│11111111│`,
+	`│22222│2│222222222222222222222222222222222222222222222222222222222222222222│22222222│`,
+	`│33333│3│333333333333333333333333333333333333333333333333333333333333333333│33333333│`,
+	`│44444│4│444444444444444444444444444444444444444444444444444444444444444444│44444444│`,
+	`│55555│5│555555555555555555555555555555555555555555555555555555555555555555│55555555│`,
+	`│66666│6│666666666666666666666666666666666666666666666666666666666666666666│66666666│`,
+	`│77777│7│777777777777777777777777777777777777777777777777777777777777777777│77777777│`,
+	`│88888│8│888888888888888888888888888888888888888888888888888888888888888888│88888888│`,
+	`│99999│9│999999999999999999999999999999999999999999999999999999999999999999│99999999│`,
+}
 
 const PunchcardFooter = `└─────┴─┴──────────────────────────────────────────────────────────────────┴────────┘`
 
@@ -110,7 +112,7 @@ var Alphabet = map[byte]int{
 	'?': ((1 << 0) | (1 << 7) | (1 << 8)),
 }
 
-func DisplayFirstLine(line string) {
+func PrintCardFirstLine(line string) {
 	var sb strings.Builder
 
 	var i int
@@ -139,7 +141,7 @@ func DisplayFirstLine(line string) {
 	fmt.Print(sb.String())
 }
 
-func DisplayPunchedLine(line string, cardLine string, search int) {
+func PrintCardPunchedLine(line string, cardLine string, search int) {
 	var sb strings.Builder
 
 	var i int
@@ -161,40 +163,33 @@ func DisplayPunchedLine(line string, cardLine string, search int) {
 	fmt.Print(sb.String())
 }
 
-func DisplayTwelvethLine(line string) {
-	DisplayPunchedLine(line, PunchcardTwelvethLine, 1<<12)
+func PrintCardTwelvethLine(line string) {
+	PrintCardPunchedLine(line, PunchcardTwelvethLine, 1<<12)
 }
 
-func DisplayEleventhLine(line string) {
-	DisplayPunchedLine(line, PunchcardEleventhLine, 1<<11)
+func PrintCardEleventhLine(line string) {
+	PrintCardPunchedLine(line, PunchcardEleventhLine, 1<<11)
 }
 
-func DisplayDigitalLines(line string) {
-	cardLine := PunchcardDigitalLines
-	nline := 0
-
-	for {
-		nl := strings.IndexByte(cardLine, '\n')
-		if nl == -1 {
-			DisplayPunchedLine(line, cardLine, 1<<nline)
-			break
-		} else {
-			DisplayPunchedLine(line, cardLine[:nl], 1<<nline)
-		}
-		cardLine = cardLine[nl+1:]
-		nline++
+func PrintCardDigitalLines(line string) {
+	for i := 0; i < len(PunchcardDigitalLines); i++ {
+		PrintCardPunchedLine(line, PunchcardDigitalLines[i], 1<<i)
 	}
 }
 
-func DisplayLine(line string) {
-	fmt.Print(PunchcardHeader + "\r\n")
-	DisplayFirstLine(line)
-	DisplayTwelvethLine(line)
-	fmt.Print(PunchcardHR1 + "\r\n")
-	DisplayEleventhLine(line)
-	fmt.Print(PunchcardHR2 + "\r\n")
-	DisplayDigitalLines(line)
-	fmt.Print(PunchcardFooter + "\r\n")
+func PrintLineOnCard(line string) {
+	fmt.Printf(PunchcardHeader + "\r\n")
+	PrintCardFirstLine(line)
+	PrintCardTwelvethLine(line)
+	fmt.Printf(PunchcardHR1 + "\r\n")
+	PrintCardEleventhLine(line)
+	fmt.Printf(PunchcardHR2 + "\r\n")
+	PrintCardDigitalLines(line)
+	fmt.Printf(PunchcardFooter + "\r\n")
+}
+
+func DisplayCard() {
+	PrintLineOnCard("")
 }
 
 func Usage() {
@@ -221,7 +216,7 @@ func PrintFile(args []string) error {
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		DisplayLine(scanner.Text())
+		PrintLineOnCard(scanner.Text())
 	}
 
 	return nil
@@ -245,11 +240,10 @@ func CalculateLineOffsets() {
 
 		pos += lineFeed + 1
 	}
-
-	println(len(LineOffsets))
 }
 
 func DeleteLine(n int) {
+
 }
 
 func GetLine(buffer []byte, n int) int {
@@ -260,10 +254,57 @@ func GetLine(buffer []byte, n int) int {
 	}
 }
 
+func PrintLine(line []byte) {
+	var buf bytes.Buffer
+
+	DisplayCard()
+
+	buf.WriteString(ESC + "[16A" + ESC + "[1C")
+	for i := 0; i < len(line); i++ {
+		if (i == 5) || (i == 6) || (i == 72) {
+			buf.WriteString(ESC + "[1C")
+		}
+
+		buf.WriteByte(line[i])
+		buf.WriteString(ESC + "[1B" + ESC + "[1D")
+
+		if (Alphabet[line[i]] & (1 << 12)) == (1 << 12) {
+			buf.WriteRune(PunchcardHole)
+			buf.WriteString(ESC + "[1D")
+		}
+		buf.WriteString(ESC + "[1B")
+
+		buf.WriteString(ESC + "[1B")
+
+		if (Alphabet[line[i]] & (1 << 11)) == (1 << 11) {
+			buf.WriteRune(PunchcardHole)
+			buf.WriteString(ESC + "[1D")
+		}
+		buf.WriteString(ESC + "[1B")
+
+		buf.WriteString(ESC + "[1B")
+
+		for j := 0; j < len(PunchcardDigitalLines); j++ {
+			if (Alphabet[line[i]] & (1 << j)) == (1 << j) {
+				buf.WriteRune(PunchcardHole)
+				buf.WriteString(ESC + "[1D")
+			}
+			buf.WriteString(ESC + "[1B")
+		}
+
+		buf.WriteString(ESC + "[1C")
+		buf.WriteString(ESC + "[15A")
+	}
+
+	os.Stdout.Write(buf.Bytes())
+}
+
 func WriteLine(buffer []byte, n int) {
 }
 
 const (
+	ESC = "\033"
+
 	Backspace = 127
 )
 
@@ -272,6 +313,7 @@ var (
 	RightArrow = []byte{27, 91, 67}
 )
 
+/* TODO(anton2920): think about displaying cards stacked on each other. */
 func EditFile(args []string) error {
 	if len(args) != 1 {
 		Usage()
@@ -307,10 +349,10 @@ func EditFile(args []string) error {
 
 	var lineIndex int
 	pos = GetLine(line, lineIndex)
+	PrintLine(line[:pos])
 
-forLoop:
-	for {
-		DisplayLine(string(line[:pos]))
+	var quit bool
+	for !quit {
 
 		buffer := make([]byte, 10)
 		n, err := os.Stdin.Read(buffer)
@@ -324,7 +366,7 @@ forLoop:
 		if len(buffer) == 1 {
 			switch buffer[0] {
 			case 'q':
-				break forLoop
+				quit = true
 			case Backspace:
 				pos = 0
 			default:
@@ -346,6 +388,7 @@ forLoop:
 				}
 			}
 			pos = GetLine(line, lineIndex)
+			PrintLine(line[:pos])
 		}
 
 	}
