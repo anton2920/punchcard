@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"strings"
@@ -225,6 +227,51 @@ func PrintFile(args []string) error {
 	return nil
 }
 
+var (
+	FileContents []byte
+	LineOffsets  []int
+)
+
+func CalculateLineOffsets() {
+	var pos int
+
+	for {
+		LineOffsets = append(LineOffsets, pos)
+
+		lineFeed := bytes.IndexByte(FileContents[pos:], '\n')
+		if lineFeed == -1 {
+			break
+		}
+
+		pos += lineFeed + 1
+	}
+
+	println(len(LineOffsets))
+}
+
+func DeleteLine(n int) {
+}
+
+func GetLine(buffer []byte, n int) int {
+	if n < len(LineOffsets)-1 {
+		return copy(buffer, FileContents[LineOffsets[n]:LineOffsets[n+1]-1])
+	} else {
+		return copy(buffer, FileContents[LineOffsets[n]:])
+	}
+}
+
+func WriteLine(buffer []byte, n int) {
+}
+
+const (
+	Backspace = 127
+)
+
+var (
+	LeftArrow  = []byte{27, 91, 68}
+	RightArrow = []byte{27, 91, 67}
+)
+
 func EditFile(args []string) error {
 	if len(args) != 1 {
 		Usage()
@@ -233,6 +280,12 @@ func EditFile(args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open file: %v", err)
 	}
+
+	FileContents, err = io.ReadAll(file)
+	if err != nil {
+		return fmt.Errorf("failed to read entire file: %v", err)
+	}
+	CalculateLineOffsets()
 
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
@@ -252,7 +305,8 @@ func EditFile(args []string) error {
 	line := make([]byte, 80)
 	pos := 0
 
-	_ = file
+	var lineIndex int
+	pos = GetLine(line, lineIndex)
 
 forLoop:
 	for {
@@ -271,14 +325,27 @@ forLoop:
 			switch buffer[0] {
 			case 'q':
 				break forLoop
-			case 127:
-				line = line[:0]
+			case Backspace:
 				pos = 0
 			default:
 				if len(buffer) <= len(line)-pos {
 					pos += copy(line[pos:], buffer)
 				}
 			}
+		} else if len(buffer) == 3 {
+			if bytes.Equal(buffer, RightArrow) {
+				lineIndex++
+				if lineIndex >= len(LineOffsets) {
+					lineIndex = len(LineOffsets) - 1
+				}
+			} else if bytes.Equal(buffer, LeftArrow) {
+				/* Left arrow. */
+				lineIndex--
+				if lineIndex < 0 {
+					lineIndex = 0
+				}
+			}
+			pos = GetLine(line, lineIndex)
 		}
 
 	}
