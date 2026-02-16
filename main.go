@@ -425,15 +425,26 @@ func EditFile(args []string) error {
 				os.Stdout.Write([]byte("\r\n"))
 				quit = true
 			case 'w':
+				lines[lineIndex] = string(line[:pos])
 				if err := WriteLines(file, lines); err != nil {
 					return fmt.Errorf("failed to write lines to file: %v", err)
 				}
 			case Backspace:
-				lines = strings.DeleteAt(lines, lineIndex)
-				lineIndex--
-				pos = len(lines[lineIndex])
+				if len(lines) > 0 {
+					lines = strings.DeleteAt(lines, lineIndex)
+					lineIndex--
+					if lineIndex < 0 {
+						lineIndex = 0
+					}
 
-				shouldPrint = true
+					if lineIndex >= len(lines) {
+						pos = 0
+					} else {
+						pos = copy(line, lines[lineIndex])
+					}
+
+					shouldPrint = true
+				}
 			case '\t':
 				tabPositions := SkipPositions
 				for i := 0; i < len(tabPositions); i++ {
@@ -486,8 +497,12 @@ func EditFile(args []string) error {
 		}
 
 		if shouldPrint {
-			fmt.Print("\r\n")
-			PrintLine(lines[lineIndex])
+			if lineIndex >= len(lines) {
+				ClearLine()
+			} else {
+				fmt.Print("\r\n")
+				PrintLine(lines[lineIndex])
+			}
 			shouldPrint = false
 		}
 	}
