@@ -2,13 +2,17 @@ package main
 
 import (
 	"bufio"
-	"bytes"
+	stdbytes "bytes"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
-	"strings"
+	stdstrings "strings"
+
+	"github.com/anton2920/gofa/bytes"
+	"github.com/anton2920/gofa/ints"
+	"github.com/anton2920/gofa/strings"
 
 	"golang.org/x/term"
 )
@@ -113,7 +117,7 @@ var Alphabet = map[byte]int{
 }
 
 func PrintCardFirstLine(line string) {
-	var sb strings.Builder
+	var sb stdstrings.Builder
 
 	var i int
 	for _, r := range PunchcardFirstLine {
@@ -142,7 +146,7 @@ func PrintCardFirstLine(line string) {
 }
 
 func PrintCardPunchedLine(line string, cardLine string, search int) {
-	var sb strings.Builder
+	var sb stdstrings.Builder
 
 	var i int
 	for _, r := range cardLine {
@@ -222,84 +226,106 @@ func PrintFile(args []string) error {
 	return nil
 }
 
-var (
-	FileContents []byte
-	LineOffsets  []int
-)
+func MoveCursorUp(n int) string {
+	return fmt.Sprintf(ESC+"[%dA", n)
+}
 
-func CalculateLineOffsets() {
-	var pos int
+func MoveCursorDown(n int) string {
+	return fmt.Sprintf(ESC+"[%dB", n)
+}
 
-	for {
-		LineOffsets = append(LineOffsets, pos)
+func MoveCursorRight(n int) string {
+	return fmt.Sprintf(ESC+"[%dC", n)
+}
 
-		lineFeed := bytes.IndexByte(FileContents[pos:], '\n')
-		if lineFeed == -1 {
+func MoveCursorLeft(n int) string {
+	return fmt.Sprintf(ESC+"[%dD", n)
+}
+
+func MoveCursorCol(n int) string {
+	return fmt.Sprintf(ESC+"[%dG", n)
+}
+
+var SkipPositions = [...]int{5, 6, 72}
+
+func WriteChar(w io.Writer, char byte, pos int) {
+	for i := 0; i < len(SkipPositions); i++ {
+		if pos == SkipPositions[i] {
+			io.WriteString(w, MoveCursorRight(1))
 			break
 		}
-
-		pos += lineFeed + 1
 	}
-}
 
-func DeleteLine(n int) {
-
-}
-
-func GetLine(buffer []byte, n int) int {
-	if n < len(LineOffsets)-1 {
-		return copy(buffer, FileContents[LineOffsets[n]:LineOffsets[n+1]-1])
+	if _, ok := Alphabet[char]; ok {
+		w.Write([]byte{char})
 	} else {
-		return copy(buffer, FileContents[LineOffsets[n]:])
+		io.WriteString(w, string(PunchcardInvalid))
 	}
+	io.WriteString(w, MoveCursorLeft(1))
+	io.WriteString(w, MoveCursorDown(1))
+
+	if (Alphabet[char] & (1 << 12)) == (1 << 12) {
+		io.WriteString(w, string(PunchcardHole))
+		io.WriteString(w, MoveCursorLeft(1))
+	}
+	io.WriteString(w, MoveCursorDown(1))
+
+	/* Skip frame border. */
+	io.WriteString(w, MoveCursorDown(1))
+
+	if (Alphabet[char] & (1 << 11)) == (1 << 11) {
+		io.WriteString(w, string(PunchcardHole))
+		io.WriteString(w, MoveCursorLeft(1))
+	}
+	io.WriteString(w, MoveCursorDown(1))
+
+	/* Skip frame border. */
+	io.WriteString(w, MoveCursorDown(1))
+
+	for i := 0; i < len(PunchcardDigitalLines); i++ {
+		if (Alphabet[char] & (1 << i)) == (1 << i) {
+			io.WriteString(w, string(PunchcardHole))
+			io.WriteString(w, MoveCursorLeft(1))
+		}
+		io.WriteString(w, MoveCursorDown(1))
+	}
+
+	io.WriteString(w, MoveCursorRight(1))
+	io.WriteString(w, MoveCursorUp(15))
 }
 
-func PrintLine(line []byte) {
-	var buf bytes.Buffer
+func PrintLine(line string) {
+	var buf stdbytes.Buffer
 
 	DisplayCard()
 
-	buf.WriteString(ESC + "[16A" + ESC + "[1C")
+	/* Move cursor to top left corner of the card. */
+	buf.WriteString(MoveCursorUp(16))
+	buf.WriteString(MoveCursorRight(1))
+
 	for i := 0; i < len(line); i++ {
-		if (i == 5) || (i == 6) || (i == 72) {
-			buf.WriteString(ESC + "[1C")
-		}
-
-		buf.WriteByte(line[i])
-		buf.WriteString(ESC + "[1B" + ESC + "[1D")
-
-		if (Alphabet[line[i]] & (1 << 12)) == (1 << 12) {
-			buf.WriteRune(PunchcardHole)
-			buf.WriteString(ESC + "[1D")
-		}
-		buf.WriteString(ESC + "[1B")
-
-		buf.WriteString(ESC + "[1B")
-
-		if (Alphabet[line[i]] & (1 << 11)) == (1 << 11) {
-			buf.WriteRune(PunchcardHole)
-			buf.WriteString(ESC + "[1D")
-		}
-		buf.WriteString(ESC + "[1B")
-
-		buf.WriteString(ESC + "[1B")
-
-		for j := 0; j < len(PunchcardDigitalLines); j++ {
-			if (Alphabet[line[i]] & (1 << j)) == (1 << j) {
-				buf.WriteRune(PunchcardHole)
-				buf.WriteString(ESC + "[1D")
-			}
-			buf.WriteString(ESC + "[1B")
-		}
-
-		buf.WriteString(ESC + "[1C")
-		buf.WriteString(ESC + "[15A")
+		WriteChar(&buf, line[i], i)
 	}
 
 	os.Stdout.Write(buf.Bytes())
 }
 
-func WriteLine(buffer []byte, n int) {
+func DoTab(line []byte, currPos int, destPos int) {
+	for i := currPos; i < destPos; i++ {
+		line[i] = ' '
+		WriteChar(os.Stdout, line[i], i)
+	}
+}
+
+func ClearLine() {
+	/* Move to the beginning of previous line. */
+	os.Stdout.Write([]byte(ESC + "[1F"))
+
+	DisplayCard()
+
+	/* Move cursor to top left corner of the card. */
+	io.WriteString(os.Stdout, MoveCursorUp(16))
+	io.WriteString(os.Stdout, MoveCursorRight(1))
 }
 
 const (
@@ -311,7 +337,34 @@ const (
 var (
 	LeftArrow  = []byte{27, 91, 68}
 	RightArrow = []byte{27, 91, 67}
+	Delete     = []byte{27, 91, 51, 126}
 )
+
+func WriteLines(file *os.File, lines []string) error {
+	if _, err := file.Seek(0, os.SEEK_SET); err != nil {
+		return fmt.Errorf("failed to rewind file: %v", err)
+	}
+
+	var length int64
+	for i := 0; i < len(lines); i++ {
+		if i > 0 {
+			newline := []byte("\n")
+			if _, err := file.Write(newline); err != nil {
+				return fmt.Errorf("failed to write newline character for %dth line: %v", i, err)
+			}
+			length += int64(len(newline))
+		}
+		if _, err := io.WriteString(file, lines[i]); err != nil {
+			return fmt.Errorf("failed to write %dth line: %v", i, err)
+		}
+		length += int64(len(lines[i]))
+	}
+
+	if err := file.Truncate(length); err != nil {
+		return fmt.Errorf("failed to truncate file to length %d: %v", length, err)
+	}
+	return nil
+}
 
 /* TODO(anton2920): think about displaying cards stacked on each other. */
 func EditFile(args []string) error {
@@ -322,12 +375,13 @@ func EditFile(args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open file: %v", err)
 	}
+	defer file.Close()
 
-	FileContents, err = io.ReadAll(file)
+	contents, err := io.ReadAll(file)
 	if err != nil {
 		return fmt.Errorf("failed to read entire file: %v", err)
 	}
-	CalculateLineOffsets()
+	lines := stdstrings.Split(bytes.AsString(contents), "\n")
 
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
@@ -348,49 +402,94 @@ func EditFile(args []string) error {
 	pos := 0
 
 	var lineIndex int
-	pos = GetLine(line, lineIndex)
-	PrintLine(line[:pos])
+	if len(lines) >= 1 {
+		pos = copy(line, lines[lineIndex])
+	}
+	PrintLine(bytes.AsString(line[:pos]))
 
-	var quit bool
+	var quit, shouldPrint bool
 	for !quit {
-
 		buffer := make([]byte, 10)
 		n, err := os.Stdin.Read(buffer)
 		if err != nil {
 			return fmt.Errorf("failed to read from stdin: %v", err)
 		}
 		buffer = buffer[:n]
-
-		fmt.Printf("%v", buffer)
+		//fmt.Printf("%v\r\n", buffer)
 
 		if len(buffer) == 1 {
-			switch buffer[0] {
+			char := buffer[0]
+			switch char {
 			case 'q':
+				os.Stdout.Write([]byte(MoveCursorDown(15)))
+				os.Stdout.Write([]byte("\r\n"))
 				quit = true
+			case 'w':
+				if err := WriteLines(file, lines); err != nil {
+					return fmt.Errorf("failed to write lines to file: %v", err)
+				}
 			case Backspace:
+				lines = strings.DeleteAt(lines, lineIndex)
+				lineIndex--
+				pos = len(lines[lineIndex])
+
+				shouldPrint = true
+			case '\t':
+				tabPositions := SkipPositions
+				for i := 0; i < len(tabPositions); i++ {
+					tabPosition := tabPositions[i]
+					if pos < tabPosition {
+						DoTab(line, pos, tabPosition)
+						pos = tabPosition
+						break
+					}
+				}
+			case '\r':
+				lines[lineIndex] = string(line[:pos])
+				lines = strings.InsertAt(lines, "", lineIndex+1)
+				lineIndex++
 				pos = 0
+
+				shouldPrint = true
 			default:
-				if len(buffer) <= len(line)-pos {
-					pos += copy(line[pos:], buffer)
+				if _, ok := Alphabet[char]; ok {
+					if pos+len(buffer) < len(line) {
+						if (pos == 0) && (char != 'C') {
+							line[0] = ' '
+							pos = 1
+							os.Stdout.Write([]byte(MoveCursorRight(1)))
+						}
+						line[pos] = char
+						WriteChar(os.Stdout, char, pos)
+						pos++
+					}
 				}
 			}
 		} else if len(buffer) == 3 {
-			if bytes.Equal(buffer, RightArrow) {
+			index := lineIndex
+			if stdbytes.Equal(buffer, RightArrow) {
 				lineIndex++
-				if lineIndex >= len(LineOffsets) {
-					lineIndex = len(LineOffsets) - 1
-				}
-			} else if bytes.Equal(buffer, LeftArrow) {
-				/* Left arrow. */
+			} else if stdbytes.Equal(buffer, LeftArrow) {
 				lineIndex--
-				if lineIndex < 0 {
-					lineIndex = 0
-				}
 			}
-			pos = GetLine(line, lineIndex)
-			PrintLine(line[:pos])
+
+			lineIndex = ints.Clamp(lineIndex, 0, len(lines))
+			if index != lineIndex {
+				lines[index] = string(line[:pos])
+				pos = copy(line, lines[lineIndex])
+				shouldPrint = true
+			}
+		} else if stdbytes.Equal(buffer, Delete) {
+			ClearLine()
+			lines[lineIndex] = ""
+			pos = 0
 		}
 
+		if shouldPrint {
+			fmt.Print("\r\n")
+			PrintLine(lines[lineIndex])
+			shouldPrint = false
+		}
 	}
 
 	return nil

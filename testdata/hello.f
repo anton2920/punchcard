@@ -1,0 +1,4 @@
+      PRINT 1
+ 1    FORMAT(12HHELLO, WORLD)
+      STOP
+      END
